@@ -68,7 +68,7 @@ async fn get_book_and_music() -> Result<(Book, Music), String> {
 }
 ```
 
-Note that the Future in try\_join! must have the same error type. If the functions return different errors, we can use **map\_err** and **err\_info** in futures::future::TryFutureExt for error conversion.
+Note that the Future in try\_join! must have the same error type. If the functions return different errors, we can use **map\_err** and **err\_into** in futures::future::TryFutureExt for error conversion.
 
 ```rust
 use futures::{
