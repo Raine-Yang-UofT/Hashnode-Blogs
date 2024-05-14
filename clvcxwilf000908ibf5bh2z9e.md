@@ -149,6 +149,12 @@ def register(linter: PyLinter) -> None:
     linter.register_checker(UniqueReturnChecker(linter))
 ```
 
+To run the checker with pylint on command line, we can use the command
+
+> pylint --load-plugins=python\_ta.checkers.unique\_return\_checker --disable=all --enable=non-unique-returns ./examples/custom\_checkers/test.py
+
+In the command, replace &lt;python\_ta.checkers.unique\_return\_checker&gt; with the path of the checker to load. Note that the file path needs to be separated by "." instead of "/", and you cannot add .py after the checker module name , otherwise the checker will not be successfully loaded. Also, replace &lt;non-unique-returns&gt; with the name of the checker (defined in the checker class) and &lt;./examples/custom\_checkers/test.py&gt; with the file you want to check.
+
 ### Integrating with PythonTA
 
 To add the checker into PythonTA, simple put the module under the directory `pyta\python_ta\checkers` . Here is a test program and the corresponding PythonTA output:
