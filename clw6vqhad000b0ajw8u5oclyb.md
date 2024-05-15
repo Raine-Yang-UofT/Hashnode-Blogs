@@ -126,9 +126,155 @@ def patch_all(messages_config: dict):
 
 In conclusion, renderer functions in `node_printer.py` will be triggered whenever a corresponding error message is being reported by `PyLinter.add_message()`. Therefore, what we need to do is to write test cases that trigger that pep8 errors.
 
-### Writing Tests for `node_printer.py`
+### Pylint Debug Module
 
 Pylint provides `pylint.testutils.CheckerTestCase` package to implement unit tests for pylint checkers. Documentations and example implementations of Pylint checkers can be found here:([https://pylint.pycqa.org/en/latest/development\_guide/how\_tos/custom\_checkers.html#testing-a-checker](https://pylint.pycqa.org/en/latest/development_guide/how_tos/custom_checkers.html#testing-a-checker))
+
+Below is part of source code of CheckerTestCase class. This class provides two unit test methods, `assertAddsMesage` and `assertNoMessage`, used to check cases when an error occurs or no error occurs, respectively.
+
+```python
+# in pylint/testutils/functional/checker_test_case.py
+class CheckerTestCase:
+    """A base testcase class for unit testing individual checker classes."""
+
+    # TODO: Figure out way to type this as type[BaseChecker] while also
+    # setting self.checker correctly.
+    CHECKER_CLASS: Any
+    CONFIG: dict[str, Any] = {}
+
+    def setup_method(self) -> None:
+        self.linter = UnittestLinter()
+        self.checker = self.CHECKER_CLASS(self.linter)
+        for key, value in self.CONFIG.items():
+            setattr(self.checker.linter.config, key, value)
+        self.checker.open()
+
+    @contextlib.contextmanager
+    def assertNoMessages(self) -> Iterator[None]:
+        """Assert that no messages are added by the given method."""
+        with self.assertAddsMessages():
+            yield
+
+    @contextlib.contextmanager
+    def assertAddsMessages(
+        self, *messages: MessageTest, ignore_position: bool = False
+    ) -> Generator[None, None, None]:
+        """Assert that exactly the given method adds the given messages.
+
+        The list of messages must exactly match *all* the messages added by the
+        method. Additionally, we check to see whether the args in each message can
+        actually be substituted into the message string.
+
+        Using the keyword argument `ignore_position`, all checks for position
+        arguments (line, col_offset, ...) will be skipped. This can be used to
+        just test messages for the correct node.
+        """
+        yield
+        got = self.linter.release_messages()
+        no_msg = "No message."
+        expected = "\n".join(repr(m) for m in messages) or no_msg
+        got_str = "\n".join(repr(m) for m in got) or no_msg
+        msg = (
+            "Expected messages did not match actual.\n"
+            f"\nExpected:\n{expected}\n\nGot:\n{got_str}\n"
+        )
+
+        assert len(messages) == len(got), msg
+
+        for expected_msg, gotten_msg in zip(messages, got):
+            assert expected_msg.msg_id == gotten_msg.msg_id, msg
+            assert expected_msg.node == gotten_msg.node, msg
+            assert expected_msg.args == gotten_msg.args, msg
+            assert expected_msg.confidence == gotten_msg.confidence, msg
+
+            if ignore_position:
+                # Do not check for line, col_offset etc...
+                continue
+
+            assert expected_msg.line == gotten_msg.line, msg
+            assert expected_msg.col_offset == gotten_msg.col_offset, msg
+            if not IS_PYPY or PY39_PLUS:
+                assert expected_msg.end_line == gotten_msg.end_line, msg
+                assert expected_msg.end_col_offset == gotten_msg.end_col_offset, msg
+```
+
+One thing worth noting is that `CheckTestCase` initializes its own pylinter from **UnittestLinter**, whose source code is as follows:
+
+```python
+class UnittestLinter(PyLinter):
+    """A fake linter class to capture checker messages."""
+
+    def __init__(self) -> None:
+        self._messages: list[MessageTest] = []
+        super().__init__()
+
+    def release_messages(self) -> list[MessageTest]:
+        try:
+            return self._messages
+        finally:
+            self._messages = []
+
+    def add_message(
+        self,
+        msgid: str,
+        line: int | None = None,
+        # TODO: Make node non optional
+        node: nodes.NodeNG | None = None,
+        args: Any = None,
+        confidence: Confidence | None = None,
+        col_offset: int | None = None,
+        end_lineno: int | None = None,
+        end_col_offset: int | None = None,
+    ) -> None:
+        """Add a MessageTest to the _messages attribute of the linter class."""
+        # If confidence is None we set it to UNDEFINED as well in PyLinter
+        if confidence is None:
+            confidence = UNDEFINED
+
+        # Look up "location" data of node if not yet supplied
+        if node:
+            if node.position:
+                if not line:
+                    line = node.position.lineno
+                if not col_offset:
+                    col_offset = node.position.col_offset
+                if not end_lineno:
+                    end_lineno = node.position.end_lineno
+                if not end_col_offset:
+                    end_col_offset = node.position.end_col_offset
+            else:
+                if not line:
+                    line = node.fromlineno
+                if not col_offset:
+                    col_offset = node.col_offset
+                if not end_lineno:
+                    end_lineno = node.end_lineno
+                if not end_col_offset:
+                    end_col_offset = node.end_col_offset
+
+        self._messages.append(
+            MessageTest(
+                msgid,
+                line,
+                node,
+                args,
+                confidence,
+                col_offset,
+                end_lineno,
+                end_col_offset,
+            )
+        )
+
+    @staticmethod
+    def is_message_enabled(*unused_args: Any, **unused_kwargs: Any) -> Literal[True]:
+        return True
+```
+
+**UnittestLinter** inherits PyLinter and provides an additional method `release_message()` used to return self.\_messages. However, one concern I had is that `UnittestLinter` defines its own `add_message()` method . Since the module we want to test `node_printer`, is only invoked by the modified `add_message()` for pylinter in PythonTA, and PythonTA does not implement any overrides to pylint/testutils, it remains uncertain whether the unit test will invoke the modified `add_message()` . This part requires further confirmation and I will update this article if necessary.
+
+![](https://cdn.hashnode.com/res/hashnode/image/upload/v1715803231743/527487d9-2b98-4264-8ae3-b3a1c434efed.png align="center")
+
+### Writing Tests for `node_printer.py`
 
 The errors listed above all belong to pep8 errors, and are checked by PycodestyleChecker. PycodestyleChecker inherits BaseRawFileChecker in Pylint, meaning that it directly analyzes file text without building AST, and invokes pycodestyle to check for errors.
 
