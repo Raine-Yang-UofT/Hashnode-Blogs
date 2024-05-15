@@ -7,15 +7,15 @@ tags: unit-testing, python, testing, pylint
 
 ---
 
-In this task, we will improve test coverage rate of node\_printer.py module in PythonTA ([**https://github.com/pyta-uoft/pyta**](https://github.com/pyta-uoft/pyta)) by adding unit tests to uncovered cases in Pycodestyle checker.
+In this task, we will improve test coverage rate of `node_printer.py` module in PythonTA ([**https://github.com/pyta-uoft/pyta**](https://github.com/pyta-uoft/pyta)) by adding unit tests to uncovered cases in Pycodestyle checker.
 
-### What Does node\_printers.py Module Do
+### What Does `node_printers.py` Module Do
 
-The module we need to test, node\_printer.py (located at */python\_ta/reporters/node\_*[*printers.py*](http://printers.py)), is used to specify how the code snippets with errors should be highlighted. In most cases, we can just highlight the entire line that contains the error. However, in some cases, we may want to provide additional comments or highlight only part of the line that contains the error to provide clearer information, for example:
+The module we need to test, `node_printer.py` (located at `/python_ta/reporters/node_printer.py`), is used to specify how the code snippets with errors should be highlighted. In most cases, we can just highlight the entire line that contains the error. However, in some cases, we may want to provide additional comments or highlight only part of the line that contains the error to provide clearer information, for example:
 
 ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1715715992561/0f6e59ce-af83-4c5e-85c2-1076fa1784e1.png align="center")
 
-node\_printer.py stores a dictionary that contains all the error types that need special highlighting format (note that some of the types also contain sub-types), and corresponding callback functions to handle specific formatting for each error.
+`node_printer.py` stores a dictionary that contains all the error types that need special highlighting format (note that some of the types also contain sub-types), and corresponding callback functions to handle specific formatting for each error.
 
 ```python
 CUSTOM_MESSAGES = {
@@ -31,7 +31,7 @@ CUSTOM_MESSAGES = {
 }
 ```
 
-The task is to write unit tests for branches of node\_printer.py that are not covered. According to the Coveralls report, the errors being untested include:
+The task is to write unit tests for branches of `node_printer.py` that are not covered. According to the Coveralls report, the errors being untested include:
 
 * E115: Expected an indented block (comment)
     
@@ -68,7 +68,7 @@ The task is to write unit tests for branches of node\_printer.py that are not co
 
 ### How node\_printers.py Is Being Called
 
-Before we write tests to node\_printers.py, we need to first figure out how it interacts with the larger system, in other words, who are the callers of its functions that format the highlights. A look into node\_printers.py reveals that `render_message()` its only "public" function that should be called by external classes. This method returns the appropriate rendering of the message based on the message type.
+Before we write tests to `node_printers.py`, we need to first figure out how it interacts with the larger system, in other words, who are the callers of its functions that format the highlights. A look into `node_printers.py` reveals that `render_message()` its only "public" function that should be called by external classes. This method returns the appropriate rendering of the message based on the message type.
 
 ```python
 def render_message(msg, node, source_lines):
@@ -112,11 +112,23 @@ def patch_messages():
     PyLinter.add_message = new_add_message
 ```
 
-In conclusion, renderer functions in node\_printer.py will be triggered whenever a corresponding error message is being reported by PyLinter.add\_message(). Therefore, what we need to do is to write test cases that trigger that pep8 errors.
+Finally, `patch_message()` is included in `patch_all()` method of `patches` module, which is invoked in the `__init__` method of `python_ta` module. Thus, PythonTA will modifies the `add_message()` method of pylinter during initialization.
 
-### Writing Tests for node\_printer.py
+```python
+# in patches/__init__.py
+def patch_all(messages_config: dict):
+    """Execute all patches defined in this module."""
+    patch_checkers()
+    patch_ast_transforms()
+    patch_messages()
+    patch_error_messages(messages_config)
+```
 
-Pylint provides `pylint.testutils.CheckerTestCase` package to implement unit tests for pylint checkers. Documentations and example implementations of Pylint checkers can be found here :([https://pylint.pycqa.org/en/latest/development\_guide/how\_tos/custom\_checkers.html#testing-a-checker](https://pylint.pycqa.org/en/latest/development_guide/how_tos/custom_checkers.html#testing-a-checker))
+In conclusion, renderer functions in `node_printer.py` will be triggered whenever a corresponding error message is being reported by `PyLinter.add_message()`. Therefore, what we need to do is to write test cases that trigger that pep8 errors.
+
+### Writing Tests for `node_printer.py`
+
+Pylint provides `pylint.testutils.CheckerTestCase` package to implement unit tests for pylint checkers. Documentations and example implementations of Pylint checkers can be found here:([https://pylint.pycqa.org/en/latest/development\_guide/how\_tos/custom\_checkers.html#testing-a-checker](https://pylint.pycqa.org/en/latest/development_guide/how_tos/custom_checkers.html#testing-a-checker))
 
 The errors listed above all belong to pep8 errors, and are checked by PycodestyleChecker. PycodestyleChecker inherits BaseRawFileChecker in Pylint, meaning that it directly analyzes file text without building AST, and invokes pycodestyle to check for errors.
 
@@ -177,7 +189,7 @@ def register(linter: PyLinter) -> None:
     linter.register_checker(PycodestyleChecker(linter))
 ```
 
-The unit tests for PycodestyleChecker lies in file pyta/tests/test\_custom\_checkers/test\_pycodestylecheckers.py. There already exists a list of unit tests for other errors, and all we need to do is to imitate the format to implement tests for uncovered errors.
+The unit tests for PycodestyleChecker lies in file `pyta/tests/test_custom_checkers/test_pycodestylecheckers.py`. There already exists a list of unit tests for other errors, and all we need to do is to imitate the format to implement tests for uncovered errors.
 
 ```python
 import os
@@ -224,7 +236,7 @@ By analyzing the previously implemented tests, we can observe that for each erro
 
 Now we want to implement custom checker for E115: Expected an indented block (comment). This errors occurs when a comment in an indented block does not follow the indentation as the code. It would not lead to an indentation error (since it is a comment rather than source code being wrongly indented), but will reduces readability of the code.
 
-Firstly, in pyta/examples/custom\_checkers/e9989\_pycodestyle/ directory, we create two test cases **e115\_error.py** and **e115\_no\_error.py**, in which the comment is not indented in the former and correctly indented in the latter/
+Firstly, in `pyta/examples/custom_checkers/e9989_pycodestyle/` directory, we create two test cases **e115\_error.py** and **e115\_no\_error.py**, in which the comment is not indented in the former and correctly indented in the latter.
 
 In **e115\_error.py:**
 
