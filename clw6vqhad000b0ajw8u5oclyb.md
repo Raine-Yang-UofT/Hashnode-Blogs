@@ -35,7 +35,7 @@ The task is to write unit tests for branches of `node_printer.py` that are not c
 
 * E115: Expected an indented block (comment)
     
-* E122: Indentation contains mixed spaces and tabs
+* E122: Continuation line missing indentation or outdented
     
 * E127: Continuation line over-indented for visual indent
     
@@ -43,7 +43,7 @@ The task is to write unit tests for branches of `node_printer.py` that are not c
     
 * E125: Continuation line with same indent as next logical line
     
-* E129: Visual indent doesn't match indentation of line above
+* E129: Visually indented line with same indent as next logical line
     
 * E223: Tab before operator
     
@@ -57,7 +57,7 @@ The task is to write unit tests for branches of `node_printer.py` that are not c
     
 * E266: Too many leading '#' for block comment
     
-* E275: Missing trailing comma in Python tuple/list
+* E275: Missing whitespace after keyword
     
 * E301: Expected 1 blank line, found 0
     
