@@ -114,6 +114,8 @@ Now that we get familiar with the source code for control flow graph, it's time 
 
 Here's an implementation of DFS algorithm that returns the list of all paths in the graph. The nodes on the path are identified by their id. One thing to note about is the `yield` and `yield from` statements. These are similar to `return` statement, except that they only "temporarily" return the function while keeping the function local variables, including `current_block` and `visited` . `yield` statement returns a Generator that can be iterated through and lazily evaluates and returns its values.
 
+Another part worth noting is the backtracking step in the algorithm. Since `yield` retains the internal states of the function, the same `current_path` and `visited` are being reused across all recursive calls. Thus, after we finish searching for one path and begins to search for another path, we need to remove the nodes recorded in `current_path` . `visited` also needs to be reset since the other paths may use common nodes as the current path.
+
 ```python
 def _dfs(current_block: CFGBlock, current_path: list[int], visited: set[int]):
     """
@@ -227,7 +229,6 @@ if __name__ == "__main__":
         print(f"blocks: {[block.id for block in cfg.get_blocks()]}")
         print("edges: " + str([f"{edge.source.id} -> {edge.target.id}" for edge in cfg.get_edges()]))
         print(f"paths: {find_all_paths(cfg)}")
-
 ```
 
 ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1717731101952/4d5a0fce-ff20-4a78-b9f0-b2d5c04c1a80.png align="center")
