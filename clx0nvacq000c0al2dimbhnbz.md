@@ -1,5 +1,5 @@
 ---
-title: "Pyta Project: Editing pre-commit hook configuration"
+title: "PyTA Project: Editing pre-commit hook configuration"
 datePublished: Tue Jun 04 2024 17:15:54 GMT+0000 (Coordinated Universal Time)
 cuid: clx0nvacq000c0al2dimbhnbz
 slug: pyta-project-editing-pre-commit-hook-configuration
