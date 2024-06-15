@@ -1,5 +1,5 @@
 ---
-title: "Pyta Project: Depth-First Search for Control Flow Graph"
+title: "PyTA Project: Depth-First Search for Control Flow Graph"
 datePublished: Fri Jun 07 2024 03:33:01 GMT+0000 (Coordinated Universal Time)
 cuid: clx44sm1w000008mbfnr83txj
 slug: pyta-project-depth-first-search-for-control-flow-graph
