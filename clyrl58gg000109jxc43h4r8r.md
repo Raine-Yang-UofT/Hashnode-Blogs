@@ -17,7 +17,7 @@ In Z3, a string is represented as type `SeqRef` . String literals can be implici
     
 * `Contains(string, substring)`: whether `substring` is a part of `string`
     
-* `SubString(string, lower, upper)`: returns a substring of `string` from `lower` (inclusive) to `upper` (exclusive) index
+* `SubString(string, offset, length)`: returns a substring of `string` starting at index `offset` with length `length`
     
 * `Concat(*string)` : connects the given string arguments to a single string
     
@@ -55,11 +55,14 @@ Firstly, the parsing of a string variable to a Z3 String is quite straightforwar
 
 To support `in/not in` for strings, we want to first do a little bit of refactoring. In the previous article we have implemented parsing `in/not in` operators on container types. We want to combine that with string parsing in one function so that we are handling `in/not in` binary operators in a single method.
 
-In parsing `in/not in` for container type, we converts the expression as a list of equality checks on whether the variable is equal to (or not equal to) any of the values in the container. However, for `in/not in` on strings we need to use an alternative method, as in this case, we are not checking whether the string variable matches a single character, but any possible substrings. In addition, for expressions like `x in y` where `x` and `y` are both string arguments, we cannot know the composition of the strings beforehand. Thus, we can directly apply the `Contains` method for the parsing:
+In parsing `in/not in` for container type, we converts the expression as a list of equality checks on whether the variable is equal to (or not equal to) any of the values in the container. However, for `in/not in` on strings we need to use an alternative method, as in this case, we are not checking whether the string variable matches a single character, but any possible substrings. In addition, for expressions like `x in y` where `x` and `y` are both string arguments, we cannot know the composition of the strings beforehand. Thus, we can directly apply the `Contains` method for the parsing.
 
 ```python
     def apply_in_op(
-        self, left: z3.ExprRef, right: Union[z3.ExprRef, List[z3.ExprRef], str], negate=False
+        self,
+        left: Union[z3.ExprRef, str],
+        right: Union[z3.ExprRef, List[z3.ExprRef], str],
+        negate: bool = False,
     ) -> z3.ExprRef:
         """
         Apply `in` or `not in` operator on a list or string and return the
@@ -72,7 +75,9 @@ In parsing `in/not in` for container type, we converts the expression as a list 
                 if negate
                 else z3.Or(*[left == element for element in right])
             )
-        elif isinstance(right, (str, z3.SeqRef)):  # string literal or variable
+        elif isinstance(left, (str, z3.SeqRef)) and isinstance(
+            right, (str, z3.SeqRef)
+        ):  # string literal or variable
             return z3.Not(z3.Contains(right, left)) if negate else z3.Contains(right, left)
         else:
             op = "not in" if negate else "in"
@@ -80,6 +85,8 @@ In parsing `in/not in` for container type, we converts the expression as a list 
                 f"Unhandled binary operation {op} with operator types {left} and {right}."
             )
 ```
+
+According to its [documentation](https://z3prover.github.io/api/html/namespacez3py.html#ada058544efbae7608acaef3233aa4422), `Contains` method supports both string literals and `z3.SeqRef` , allowing us to handle the two cases "x in a string literal" and "x in another string variable" simultaneously.
 
 ### Parsing String Indexing and Slicing
 
@@ -107,7 +114,7 @@ Both indexing and slicing operations are represented as a `Subscript` node in As
 To simplify our implementation, we can first create a helper function that converts an Astroid node representing either positive or negative numbers to a number literal:
 
 ```python
-    def _parse_number_literal(self, node) -> Optional:
+     def _parse_number_literal(self, node: astroid.NodeNG) -> Optional[Union[int, float]]:
         """
         If the subtree from `node` represent a number literal, return the value
         Otherwise, return None
@@ -133,7 +140,7 @@ For indexing operation, although according to its documentation `z3.SubString` d
 # handle indexing
 index = self._parse_number_literal(slice)
 if isinstance(index, int):
-    return z3.SubString(value, index, index)
+    return z3.SubString(value, index, 1)
 ```
 
 For slicing operation, we first need to set empty arguments as their default values. Empty `lower`, `upper` , and `step` should be set to 0, `Length(x)` , 1, respectively.
@@ -153,32 +160,29 @@ elif isinstance(slice, nodes.Slice):
 A slicing operation with step 1 can be directly translated to a `SubString` . However, `SubString` does not support the "step length" argument. We can loop through the index range with given step length and get each partition with `SubString` , and then connect them to a single expression with `Concat`. However, this approach would not work if the upper bound is indeterminant (set to the length of string), since we cannot use a `z3.Length` expression as loop range. This problem remains unsolved and is reported as an issue in PythonTA ([https://github.com/pyta-uoft/pyta/issues/1065](https://github.com/pyta-uoft/pyta/issues/1065))
 
 ```python
-if (
+if not (
     isinstance(lower, int)
     and isinstance(upper, (int, z3.ArithRef))
     and isinstance(step, int)
 ):
+    raise Z3ParseException(f"Invalid slicing indexes {lower}, {upper}, {step}")
 
     if step == 1:
-        return z3.SubString(value, lower, upper)
-    else:
-        # unhandled case: the upper bound is indeterminant
-        if upper == z3.Length(value):
-            raise Z3ParseException(
-                "Unable to convert a slicing operation with a non-unit step length and an indeterminant upper bound"
-            )
+        return z3.SubString(value, lower, upper - lower)
 
-            return z3.Concat(
-                *(z3.SubString(value, i, i) for i in range(lower, upper, step))
-            )
-        else:
-            raise Z3ParseException(f"Invalid slice {slice}")
+    # unhandled case: the upper bound is indeterminant
+    if step != 1 and upper == z3.Length(value):
+        raise Z3ParseException(
+            "Unable to convert a slicing operation with a non-unit step length and an indeterminant upper bound"
+        )
+
+    return z3.Concat(*(z3.SubString(value, i, 1) for i in range(lower, upper, step)))
 ```
 
 The complete code is shown below (including raising errors for invalid values):
 
 ```python
-    def _parse_number_literal(self, node) -> Optional:
+    def _parse_number_literal(self, node: astroid.NodeNG) -> Optional[Union[int, float]]:
         """
         If the subtree from `node` represent a number literal, return the value
         Otherwise, return None
@@ -197,53 +201,48 @@ The complete code is shown below (including raising errors for invalid values):
         else:
             return None
 
-    def parse_subscript_op(self, node: nodes.Subscript) -> z3.ExprRef:
+    def parse_subscript_op(self, node: astroid.Subscript) -> z3.ExprRef:
         """
         Convert an astroid Subscript node to z3 expression.
         This method only supports string values and integer literal (both positive and negative) indexes
         """
         value = self.reduce(node.value)
-        if isinstance(value, z3.SeqRef):
-            slice = node.slice
+        slice = node.slice
 
-            # handle indexing
-            index = self._parse_number_literal(slice)
-            if isinstance(index, int):
-                return z3.SubString(value, index, index)
-
-            # handle slicing
-            elif isinstance(slice, nodes.Slice):
-                lower = 0 if slice.lower is None else self._parse_number_literal(slice.lower)
-                upper = (
-                    z3.Length(value)
-                    if slice.upper is None
-                    else self._parse_number_literal(slice.upper)
-                )
-                step = 1 if slice.step is None else self._parse_number_literal(slice.step)
-
-                if (
-                    isinstance(lower, int)
-                    and isinstance(upper, (int, z3.ArithRef))
-                    and isinstance(step, int)
-                ):
-
-                    if step == 1:
-                        return z3.SubString(value, lower, upper)
-                    else:
-                        # unhandled case: the upper bound is indeterminant
-                        if upper == z3.Length(value):
-                            raise Z3ParseException(
-                                "Unable to convert a slicing operation with a non-unit step length and an indeterminant upper bound"
-                            )
-
-                        return z3.Concat(
-                            *(z3.SubString(value, i, i) for i in range(lower, upper, step))
-                        )
-                else:
-                    raise Z3ParseException(f"Invalid slice {slice}")
-            else:
-                raise Z3ParseException(f"Invalid index {slice}")
-
-        else:
+        # check for invalid node type
+        if not z3.is_seq(value):
             raise Z3ParseException(f"Unhandled subscript operand type {value}")
+
+        # handle indexing
+        index = self._parse_number_literal(slice)
+        if isinstance(index, int):
+            return z3.SubString(value, index, 1)
+
+        # handle slicing
+        if isinstance(slice, nodes.Slice):
+            lower = 0 if slice.lower is None else self._parse_number_literal(slice.lower)
+            upper = (
+                z3.Length(value) if slice.upper is None else self._parse_number_literal(slice.upper)
+            )
+            step = 1 if slice.step is None else self._parse_number_literal(slice.step)
+
+            if not (
+                isinstance(lower, int)
+                and isinstance(upper, (int, z3.ArithRef))
+                and isinstance(step, int)
+            ):
+                raise Z3ParseException(f"Invalid slicing indexes {lower}, {upper}, {step}")
+
+            if step == 1:
+                return z3.SubString(value, lower, upper - lower)
+
+            # unhandled case: the upper bound is indeterminant
+            if step != 1 and upper == z3.Length(value):
+                raise Z3ParseException(
+                    "Unable to convert a slicing operation with a non-unit step length and an indeterminant upper bound"
+                )
+
+            return z3.Concat(*(z3.SubString(value, i, 1) for i in range(lower, upper, step)))
+
+        raise Z3ParseException(f"Unhandled subscript operator type {slice}")
 ```
